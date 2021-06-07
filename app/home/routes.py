@@ -13,17 +13,17 @@ from app.base.models import User
 from datetime import date
 from app import db
 
-secret = "*G-KaPdSgVkYp2t6"
+SECRET_KEY = "*G-KaPdSgVkYp2t6"
+ACCESS_TOKEN_LIFETIME = 1800
 
 @blueprint.route('/index')
 @login_required
 def index():
-    encoded_jwt2 = jwt.encode({"user": current_user.id, "exp": time.time() + 3600, "permission_field": 'layer2'}, secret, algorithm="HS256")
+    encoded_jwt2 = jwt.encode({"user": current_user.id, "exp": time.time() + ACCESS_TOKEN_LIFETIME, "permission_field": 'layer2'}, SECRET_KEY, algorithm="HS256")
     print("token for second api--->", encoded_jwt2)
-    encoded_jwt1 = jwt.encode({"user": current_user.id, "exp": time.time() + 3600, "permission_field": 'layer1'}, secret, algorithm="HS256")
+    encoded_jwt1 = jwt.encode({"user": current_user.id, "exp": time.time() + ACCESS_TOKEN_LIFETIME, "permission_field": 'layer1'}, SECRET_KEY, algorithm="HS256")
     print("token for first api--->", encoded_jwt1)
-    encoded_refresh_jwt = jwt.encode({"user": current_user.id, "exp": time.time() + 36000, "permission_field": 'refresh'}, secret, algorithm="HS256")
-    print("refresh token--->", encoded_refresh_jwt)
+    encoded_refresh_jwt = replace_refresh_token(current_user.id)
     return render_template('index.html', segment='index')
 
 def check_limit(id):
@@ -42,11 +42,19 @@ def check_limit(id):
     print("current count-->", me.today_limit)
     db.session.commit()
 
+def replace_refresh_token(user_id):
+    encoded_refresh_jwt = jwt.encode({"user": user_id, "exp": time.time() + 3600*24*200, "permission_field": 'refresh'}, SECRET_KEY, algorithm="HS256")
+    print("refresh token--->", encoded_refresh_jwt)
+    me = User.query.filter_by(id=user_id).first()
+    me.refresh_token = encoded_refresh_jwt
+    db.session.commit()
+    return encoded_refresh_jwt
+
 @blueprint.route('/api/layer1')
 def api():
     try:
         encoded_jwt = request.headers.get('Authorization')
-        decoded_jwt = jwt.decode((encoded_jwt), secret, algorithms=["HS256"])
+        decoded_jwt = jwt.decode(encoded_jwt, SECRET_KEY, algorithms=["HS256"])
         if decoded_jwt["permission_field"] != "layer1":
             return 'invalid token'
         if decoded_jwt['exp'] < time.time():
@@ -60,7 +68,7 @@ def api():
 def api2():
     try:
         encoded_jwt = request.headers.get('Authorization')
-        decoded_jwt = jwt.decode(encoded_jwt, secret, algorithms=["HS256"])
+        decoded_jwt = jwt.decode(encoded_jwt, SECRET_KEY, algorithms=["HS256"])
         if decoded_jwt["permission_field"] != "layer2":
             return 'invalid token'
         if decoded_jwt['exp'] < time.time():
@@ -74,23 +82,31 @@ def api2():
 def refresh_token():
     try:
         encoded_jwt = request.headers.get('Authorization')
-        decoded_jwt = jwt.decode(encoded_jwt, secret, algorithms=["HS256"])
+        decoded_jwt = jwt.decode(encoded_jwt, SECRET_KEY, algorithms=["HS256"])
         if decoded_jwt["permission_field"] != "refresh":
             return 'not refresh token'
         if decoded_jwt['exp'] < time.time():
             return 'refresh token expired'
         user_id = decoded_jwt["user"]
-        encoded_jwt2 = jwt.encode({"user": user_id, "exp": time.time() + 3600, "permission_field": 'layer2'}, secret, algorithm="HS256")
+
+        # check if the refresh token is stored in DB, if exists, the current refresh token is valid one.
+        me = User.query.filter_by(id=user_id).first()
+        if encoded_jwt != me.refresh_token:
+            return 'this refresh token is not valid anymore'
+
+        encoded_jwt2 = jwt.encode({"user": user_id, "exp": time.time() + ACCESS_TOKEN_LIFETIME, "permission_field": 'layer2'}, SECRET_KEY, algorithm="HS256")
         print("token for second api--->", encoded_jwt2)
-        encoded_jwt1 = jwt.encode({"user": user_id, "exp": time.time() + 3600, "permission_field": 'layer1'}, secret, algorithm="HS256")
+        encoded_jwt1 = jwt.encode({"user": user_id, "exp": time.time() + ACCESS_TOKEN_LIFETIME, "permission_field": 'layer1'}, SECRET_KEY, algorithm="HS256")
         print("token for first api--->", encoded_jwt1)
+        encoded_refresh_jwt = replace_refresh_token(user_id)
     except:
         return 'Invalid'
 
-    return jsonify({
+    return {
         "first API token": encoded_jwt1,
-        "second API token": encoded_jwt2
-    })
+        "second API token": encoded_jwt2,
+        "new refresh token": encoded_refresh_jwt,
+    }
 
 @blueprint.route('/<template>')
 @login_required

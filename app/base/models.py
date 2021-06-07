@@ -19,6 +19,7 @@ class User(db.Model, UserMixin):
     email = Column(String, unique=True)
     today = Column(Integer, default=0)
     today_limit = Column(Integer, default=0)
+    refresh_token = Column(String, default="")
     password = Column(Binary)
 
     def __init__(self, **kwargs):
