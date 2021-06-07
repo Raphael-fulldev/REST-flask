@@ -13,13 +13,17 @@ from app.base.models import User
 from datetime import date
 from app import db
 
+secret = "*G-KaPdSgVkYp2t6"
+
 @blueprint.route('/index')
 @login_required
 def index():
-    encoded_jwt2 = jwt.encode({"user": current_user.id, "exp": time.time() + 36000, "permission_field": 'layer2'}, "secret1", algorithm="HS256")
+    encoded_jwt2 = jwt.encode({"user": current_user.id, "exp": time.time() + 3600, "permission_field": 'layer2'}, secret, algorithm="HS256")
     print("token for second api--->", encoded_jwt2)
-    encoded_jwt1 = jwt.encode({"user": current_user.id, "exp": time.time() + 36000, "permission_field": 'layer1'}, "secret1", algorithm="HS256")
+    encoded_jwt1 = jwt.encode({"user": current_user.id, "exp": time.time() + 3600, "permission_field": 'layer1'}, secret, algorithm="HS256")
     print("token for first api--->", encoded_jwt1)
+    encoded_refresh_jwt = jwt.encode({"user": current_user.id, "exp": time.time() + 36000, "permission_field": 'refresh'}, secret, algorithm="HS256")
+    print("refresh token--->", encoded_refresh_jwt)
     return render_template('index.html', segment='index')
 
 def check_limit(id):
@@ -40,25 +44,53 @@ def check_limit(id):
 
 @blueprint.route('/api/layer1')
 def api():
-    encoded_jwt = request.headers.get('Authorization')
-    decoded_jwt = jwt.decode((encoded_jwt), "secret1", algorithms=["HS256"])
-    if decoded_jwt["permission_field"] != "layer1":
-        return 'invalid token'
-    if decoded_jwt['exp'] < time.time():
-        return 'token expired'
-    check_limit(decoded_jwt['user'])
+    try:
+        encoded_jwt = request.headers.get('Authorization')
+        decoded_jwt = jwt.decode((encoded_jwt), secret, algorithms=["HS256"])
+        if decoded_jwt["permission_field"] != "layer1":
+            return 'invalid token'
+        if decoded_jwt['exp'] < time.time():
+            return 'token expired'
+        check_limit(decoded_jwt['user'])
+    except:
+        return 'Invalid'
     return jsonify(decoded_jwt)
 
 @blueprint.route('/api/layer2')
 def api2():
-    encoded_jwt = request.headers.get('Authorization')
-    decoded_jwt = jwt.decode((encoded_jwt), "secret1", algorithms=["HS256"])
-    if decoded_jwt["permission_field"] != "layer2":
-        return 'invalid token'
-    if decoded_jwt['exp'] < time.time():
-        return 'token expired'
-    check_limit(decoded_jwt['user'])
+    try:
+        encoded_jwt = request.headers.get('Authorization')
+        decoded_jwt = jwt.decode(encoded_jwt, secret, algorithms=["HS256"])
+        if decoded_jwt["permission_field"] != "layer2":
+            return 'invalid token'
+        if decoded_jwt['exp'] < time.time():
+            return 'token expired'
+        check_limit(decoded_jwt['user'])
+    except:
+        return 'Invalid'
     return jsonify(decoded_jwt)
+
+@blueprint.route('/api/refresh_token')
+def refresh_token():
+    try:
+        encoded_jwt = request.headers.get('Authorization')
+        decoded_jwt = jwt.decode(encoded_jwt, secret, algorithms=["HS256"])
+        if decoded_jwt["permission_field"] != "refresh":
+            return 'not refresh token'
+        if decoded_jwt['exp'] < time.time():
+            return 'refresh token expired'
+        user_id = decoded_jwt["user"]
+        encoded_jwt2 = jwt.encode({"user": user_id, "exp": time.time() + 3600, "permission_field": 'layer2'}, secret, algorithm="HS256")
+        print("token for second api--->", encoded_jwt2)
+        encoded_jwt1 = jwt.encode({"user": user_id, "exp": time.time() + 3600, "permission_field": 'layer1'}, secret, algorithm="HS256")
+        print("token for first api--->", encoded_jwt1)
+    except:
+        return 'Invalid'
+
+    return jsonify({
+        "first API token": encoded_jwt1,
+        "second API token": encoded_jwt2
+    })
 
 @blueprint.route('/<template>')
 @login_required
