@@ -50,6 +50,15 @@ def replace_refresh_token(user_id):
     db.session.commit()
     return encoded_refresh_jwt
 
+# revoke current refresh token.
+@blueprint.route('/revoke')
+@login_required
+def revoke_current_refresh_token():
+    me = User.query.filter_by(id=current_user.id).first()
+    me.refresh_token = ""
+    db.session.commit()
+    return "refresh token removed"
+
 @blueprint.route('/api/layer1')
 def api():
     try:
@@ -78,8 +87,16 @@ def api2():
         return 'Invalid'
     return jsonify(decoded_jwt)
 
-@blueprint.route('/api/refresh_token')
+@blueprint.route('/api/refresh_token', methods=['POST', 'GET'])
 def refresh_token():
+    if request.method == "POST":
+        try:
+            access_exp = request.json['exp']
+        except:
+            access_exp = 10
+    else:
+        access_exp = 10
+
     try:
         encoded_jwt = request.headers.get('Authorization')
         decoded_jwt = jwt.decode(encoded_jwt, SECRET_KEY, algorithms=["HS256"])
@@ -94,18 +111,14 @@ def refresh_token():
         if encoded_jwt != me.refresh_token:
             return 'this refresh token is not valid anymore'
 
-        encoded_jwt2 = jwt.encode({"user": user_id, "exp": time.time() + ACCESS_TOKEN_LIFETIME, "permission_field": 'layer2'}, SECRET_KEY, algorithm="HS256")
-        print("token for second api--->", encoded_jwt2)
-        encoded_jwt1 = jwt.encode({"user": user_id, "exp": time.time() + ACCESS_TOKEN_LIFETIME, "permission_field": 'layer1'}, SECRET_KEY, algorithm="HS256")
-        print("token for first api--->", encoded_jwt1)
-        encoded_refresh_jwt = replace_refresh_token(user_id)
+        encoded_jwt2 = jwt.encode({"user": user_id, "exp": time.time() + 3600*access_exp, "permission_field": 'layer2'}, SECRET_KEY, algorithm="HS256")
+        encoded_jwt1 = jwt.encode({"user": user_id, "exp": time.time() + 3600*access_exp, "permission_field": 'layer1'}, SECRET_KEY, algorithm="HS256")
     except:
         return 'Invalid'
 
     return {
         "first API token": encoded_jwt1,
         "second API token": encoded_jwt2,
-        "new refresh token": encoded_refresh_jwt,
     }
 
 @blueprint.route('/<template>')
