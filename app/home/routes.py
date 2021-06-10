@@ -71,6 +71,8 @@ def api():
         check_limit(decoded_jwt['user'])
     except:
         return 'Invalid'
+    delta = (decoded_jwt['exp'] - time.time())
+    decoded_jwt['exp'] = "{} min, {} second".format(int(delta // 60), int(delta % 60))
     return jsonify(decoded_jwt)
 
 @blueprint.route('/api/layer2')
@@ -85,18 +87,20 @@ def api2():
         check_limit(decoded_jwt['user'])
     except:
         return 'Invalid'
+    delta = (decoded_jwt['exp'] - time.time())
+    decoded_jwt['exp'] = "{} min, {} second".format(int(delta // 60), int(delta % 60))
     return jsonify(decoded_jwt)
 
 @blueprint.route('/api/refresh_token', methods=['POST', 'GET'])
 def refresh_token():
     if request.method == "POST":
         try:
-            access_exp = request.json['exp']
+            access_exp = int(request.json['exp'])
         except:
             access_exp = 10
     else:
         access_exp = 10
-
+    print(access_exp)
     try:
         encoded_jwt = request.headers.get('Authorization')
         decoded_jwt = jwt.decode(encoded_jwt, SECRET_KEY, algorithms=["HS256"])
